@@ -1,0 +1,33 @@
+name: Deploy Grocery API
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        shell: powershell
+        run: |
+          cd C:\Users\Gag\Desktop\PrivateServer
+
+          git pull origin main
+
+          docker compose build api
+
+          docker compose up -d api
+
+      - name: Health Check
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 5
+
+          Invoke-WebRequest `
+            -Uri http://localhost:3000/health `
+            -UseBasicParsing
