@@ -11,7 +11,7 @@ app.get("/health", async (req, res) => {
 
     res.json({
       status: "OK",
-      database: "CONNECTED",
+      database: "CONNECTED With Deployed on GitHub",
       time: result.rows[0].now
     });
 
