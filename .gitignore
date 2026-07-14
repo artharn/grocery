@@ -142,6 +142,6 @@ dist
 .svelte-kit
 
 # Cloudflare exe
-.cloudflared.exe
+/cloudflared.exe
 
 # End of https://www.toptal.com/developers/gitignore/api/node
