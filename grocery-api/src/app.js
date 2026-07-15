@@ -11,7 +11,7 @@ app.get("/health", async (req, res) => {
 
     res.json({
       status: "OK",
-      database: "CONNECTED With Test push from other device",
+      database: "CONNECTED With Test For Sumitra",
       time: result.rows[0].now
     });
 
