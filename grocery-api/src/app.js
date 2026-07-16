@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const pool = require("../db/database");
 
@@ -11,21 +13,22 @@ app.get("/health", async (req, res) => {
 
     res.json({
       status: "OK",
-      database: "CONNECTED With Test For Sumitra",
-      time: result.rows[0].now
+      database: "CONNECTED",
+      time: result.rows[0].now,
     });
-
   } catch (error) {
     console.error(error);
 
     res.status(500).json({
       status: "ERROR",
       database: "DISCONNECTED",
-      message: error.message
+      message: error.message,
     });
   }
 });
 
-app.listen(3000, () => {
-  console.log("API Running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`API Running on port ${PORT}`);
 });
