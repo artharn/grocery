@@ -13,7 +13,7 @@ app.get("/health", async (req, res) => {
 
     res.json({
       status: "OK",
-      database: "CONNECTED",
+      database: "CONNECTED With apply env",
       time: result.rows[0].now,
     });
   } catch (error) {
