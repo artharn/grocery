@@ -45,7 +45,12 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       setError(err instanceof Error ? { message: err.message } : "generic");
     };
 
-    const scanner = new Html5Qrcode(READER_ELEMENT_ID);
+    // useBarCodeDetectorIfSupported belongs to the constructor's config,
+    // not the scan config passed to start() below.
+    const scanner = new Html5Qrcode(READER_ELEMENT_ID, {
+      verbose: false,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    });
     scannerRef.current = scanner;
 
     // start() normally rejects on failure, but can also throw
@@ -56,7 +61,21 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       scanner
         .start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
+          {
+            fps: 10,
+            // A fixed 250x250 box can end up larger than the actual video
+            // feed on a narrow phone viewport (this modal is capped at
+            // max-w-sm) — when that happens the library's scan region
+            // stops lining up with the real video frame and decoding
+            // silently never succeeds, even though the stream visibly
+            // keeps running. Sizing it relative to the real viewfinder
+            // avoids that, per html5-qrcode's own recommended usage.
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              const size = Math.floor(minEdge * 0.7);
+              return { width: size, height: size };
+            },
+          },
           (decodedText) => {
             if (stopped) return;
             stopped = true;
