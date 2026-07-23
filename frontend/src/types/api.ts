@@ -20,6 +20,10 @@ export interface User {
   id: number;
   username: string;
   roleId: number;
+  // Live permission codes for the user's role, read fresh from
+  // role_permissions on every login/`/auth/me` call — never hardcoded
+  // client-side, since that would drift from the backend's real table.
+  permissions: string[];
 }
 
 export interface LoginResponse {

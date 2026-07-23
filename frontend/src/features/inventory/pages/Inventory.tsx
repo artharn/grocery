@@ -6,6 +6,7 @@ import { useStockBalance, useStockTransactions, useCreateStockTransaction } from
 import { ApiError } from "../../../api/client";
 import BarcodeInput from "../../../components/BarcodeInput";
 import ProductThumbnail from "../../../components/ProductThumbnail";
+import { useAuth } from "../../../context/AuthContext";
 
 type MovementType = "IN" | "OUT" | "ADJUST";
 
@@ -104,6 +105,8 @@ export default function Inventory() {
 
 function ProductStockDetail({ product, onClose }: { product: Product; onClose: () => void }) {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canAdjust = hasPermission("STOCK_ADJUST");
   const { data: balance, isLoading: balanceLoading } = useStockBalance(product.id);
   const { data: transactions, isLoading: txLoading, isError: txError } = useStockTransactions(product.id);
   const createTransaction = useCreateStockTransaction(product.id);
@@ -168,47 +171,49 @@ function ProductStockDetail({ product, onClose }: { product: Product; onClose: (
         <span className="ml-1 text-sm font-normal text-gray-500">{t("inventory.unitsInStock")}</span>
       </p>
 
-      <form onSubmit={handleSubmit} className="mb-5 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-end">
-        <div className="sm:w-32">
-          <label className="mb-1 block text-sm font-medium text-gray-700">{t("inventory.type")}</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as MovementType)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+      {canAdjust && (
+        <form onSubmit={handleSubmit} className="mb-5 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-end">
+          <div className="sm:w-32">
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("inventory.type")}</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as MovementType)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="IN">IN</option>
+              <option value="OUT">OUT</option>
+              <option value="ADJUST">ADJUST</option>
+            </select>
+          </div>
+          <div className="sm:w-32">
+            <label className="mb-1 block text-sm font-medium text-gray-700">{quantityLabel}</label>
+            <input
+              type="number"
+              step="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("inventory.note")}</label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t("common.optional")}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={createTransaction.isPending}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <option value="IN">IN</option>
-            <option value="OUT">OUT</option>
-            <option value="ADJUST">ADJUST</option>
-          </select>
-        </div>
-        <div className="sm:w-32">
-          <label className="mb-1 block text-sm font-medium text-gray-700">{quantityLabel}</label>
-          <input
-            type="number"
-            step="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
-        </div>
-        <div className="flex-1">
-          <label className="mb-1 block text-sm font-medium text-gray-700">{t("inventory.note")}</label>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t("common.optional")}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={createTransaction.isPending}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {createTransaction.isPending ? t("inventory.recording") : t("inventory.record")}
-        </button>
-      </form>
+            {createTransaction.isPending ? t("inventory.recording") : t("inventory.record")}
+          </button>
+        </form>
+      )}
 
       {(validationError || apiError) && (
         <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

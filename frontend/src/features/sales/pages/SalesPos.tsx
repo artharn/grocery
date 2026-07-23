@@ -7,6 +7,7 @@ import { useCreateSale } from "../hooks/useSales";
 import { ApiError } from "../../../api/client";
 import BarcodeInput from "../../../components/BarcodeInput";
 import ProductThumbnail from "../../../components/ProductThumbnail";
+import { useAuth } from "../../../context/AuthContext";
 
 interface CartLine {
   productId: number;
@@ -17,6 +18,8 @@ interface CartLine {
 
 export default function SalesPos() {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canCheckout = hasPermission("SALE_CREATE");
   const { data: products, isLoading, isError } = useProducts(false);
   const createSale = useCreateSale();
 
@@ -198,13 +201,15 @@ export default function SalesPos() {
           <span className="text-base font-semibold text-gray-900">
             {t("sales.total")}: ฿{total.toFixed(2)}
           </span>
-          <button
-            onClick={handleCheckout}
-            disabled={cart.length === 0 || createSale.isPending}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {createSale.isPending ? t("sales.processing") : t("sales.checkout")}
-          </button>
+          {canCheckout && (
+            <button
+              onClick={handleCheckout}
+              disabled={cart.length === 0 || createSale.isPending}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {createSale.isPending ? t("sales.processing") : t("sales.checkout")}
+            </button>
+          )}
         </div>
       </div>
     </div>

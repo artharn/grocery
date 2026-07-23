@@ -1,5 +1,6 @@
 const asyncHandler = require("../utils/asyncHandler");
 const authService = require("../services/auth.service");
+const permissionService = require("../services/permission.service");
 
 const login = asyncHandler(async (req, res) => {
   const { username, password } = req.body;
@@ -9,10 +10,14 @@ const login = asyncHandler(async (req, res) => {
   res.json({ success: true, data: result });
 });
 
-// Returns the identity carried by the access token — the minimal endpoint
-// needed to prove `authenticate` middleware verifies tokens end-to-end.
+// Returns the identity carried by the access token, plus the role's
+// current permission codes — the frontend's only way to know what to show
+// without hardcoding role->permission mappings that could drift from
+// role_permissions (the real source of truth).
 const me = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: { user: req.user } });
+  const permissions = await permissionService.listPermissionCodes(req.user.roleId);
+
+  res.json({ success: true, data: { user: { ...req.user, permissions } } });
 });
 
 module.exports = { login, me };

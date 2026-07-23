@@ -9,6 +9,10 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  // UX-only gate for showing/hiding entry points (buttons, nav links) —
+  // the backend's own 403 on the actual request is the real enforcement.
+  // Never assume a hidden control means the action is actually blocked.
+  hasPermission: (code: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -47,8 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   };
 
+  const hasPermission = (code: string) => user?.permissions.includes(code) ?? false;
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated: !!user, isLoading, login, logout, hasPermission }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -101,9 +101,10 @@ Success `200`:
 ```json
 { "success": true, "data": {
   "accessToken": "<jwt>", "refreshToken": "<jwt>",
-  "user": { "id": 1, "username": "qa_owner", "roleId": 1 }
+  "user": { "id": 1, "username": "qa_owner", "roleId": 1, "permissions": ["PRODUCT_CREATE", "..."] }
 } }
 ```
+`permissions` is the current, live set of permission codes for the user's role (`role_permissions` joined to `permissions`, re-read on every login/`/auth/me` call — not cached in the JWT) — the frontend's only way to know what a role can do without hardcoding a role→permission map that could drift from the real table.
 
 ### `GET /auth/me`
 Auth required, no specific permission.
@@ -113,7 +114,7 @@ curl http://localhost/auth/me \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-Success `200`: `{ "success": true, "data": { "user": { "id", "username", "roleId" } } }`
+Success `200`: `{ "success": true, "data": { "user": { "id", "username", "roleId", "permissions" } } }` — same `permissions` shape as login.
 | 401 | `UNAUTHORIZED` | missing/malformed header, invalid/expired token |
 
 ---

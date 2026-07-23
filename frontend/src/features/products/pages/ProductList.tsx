@@ -8,9 +8,14 @@ import BarcodeInput from "../../../components/BarcodeInput";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import ProductThumbnail from "../../../components/ProductThumbnail";
 import ProductForm from "./ProductForm";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function ProductList() {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission("PRODUCT_CREATE");
+  const canUpdate = hasPermission("PRODUCT_UPDATE");
+  const canDelete = hasPermission("PRODUCT_DELETE");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState("");
   const [formTarget, setFormTarget] = useState<"new" | Product | null>(null);
@@ -47,12 +52,14 @@ export default function ProductList() {
     <div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-lg font-semibold text-gray-900">{t("products.title")}</h1>
-        <button
-          onClick={() => setFormTarget("new")}
-          className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-        >
-          {t("products.newProduct")}
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setFormTarget("new")}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+          >
+            {t("products.newProduct")}
+          </button>
+        )}
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -123,13 +130,15 @@ export default function ProductList() {
                   </span>
                 </td>
                 <td className="py-2 text-right">
-                  <button
-                    onClick={() => setFormTarget(product)}
-                    className="mr-3 text-emerald-700 hover:underline"
-                  >
-                    {t("common.edit")}
-                  </button>
-                  {product.is_active && (
+                  {canUpdate && (
+                    <button
+                      onClick={() => setFormTarget(product)}
+                      className="mr-3 text-emerald-700 hover:underline"
+                    >
+                      {t("common.edit")}
+                    </button>
+                  )}
+                  {canDelete && product.is_active && (
                     <button
                       onClick={() => setDeleteTarget(product)}
                       className="text-red-600 hover:underline"
@@ -172,10 +181,12 @@ export default function ProductList() {
               <div className="mt-2 flex items-center justify-between">
                 <p className="text-sm text-gray-700">฿{product.price}</p>
                 <div className="flex gap-3 text-sm">
-                  <button onClick={() => setFormTarget(product)} className="text-emerald-700">
-                    {t("common.edit")}
-                  </button>
-                  {product.is_active && (
+                  {canUpdate && (
+                    <button onClick={() => setFormTarget(product)} className="text-emerald-700">
+                      {t("common.edit")}
+                    </button>
+                  )}
+                  {canDelete && product.is_active && (
                     <button onClick={() => setDeleteTarget(product)} className="text-red-600">
                       {t("products.deactivate")}
                     </button>

@@ -149,3 +149,20 @@ a clean no-op — the database is back to empty.
   expiry — it does not re-check `is_active` against the database on every
   request, so revoking/deactivating a user doesn't invalidate their
   already-issued access token until it expires.
+
+## 6. Addendum — permissions exposed via login/`/auth/me` (post-launch)
+
+Source: frontend requirement to hide UI entry points (buttons, nav links)
+a role has no permission for, instead of only reacting to a 403 after the
+fact. This was blocked at the time `frontend/docs/requirements/
+auth-and-shell.md` was written, because neither endpoint returned
+anything beyond `roleId` — the frontend had no way to know what a role
+could actually do without hardcoding a role→permission map that could
+drift from `role_permissions` (the real source of truth).
+
+Both `POST /auth/login` and `GET /auth/me` now include `permissions`
+(array of permission codes) on the `user` object, read fresh from
+`role_permissions`/`permissions` on every call — never cached in the JWT,
+so a permission change takes effect on the user's next login/`/auth/me`
+call rather than requiring a new token to be issued. This closes the gap;
+see the frontend's own addendum in `auth-and-shell.md` for how it's used.

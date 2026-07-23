@@ -20,6 +20,17 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   // restart the camera stream on every language switch).
   const [error, setError] = useState<{ message: string } | "generic" | null>(null);
 
+  // `onScan` is passed as an inline arrow function by every caller (a new
+  // reference on every render of the parent). Keeping it out of the
+  // effect's dependency array — and reading it via a ref instead — means
+  // an unrelated re-render of the parent (e.g. a background query
+  // refetch) can't tear down and restart the camera mid-scan. Previously
+  // it WAS a dependency, which is exactly why scanning could silently
+  // never produce a result: the video stream kept restarting before a
+  // frame ever got decoded.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
   useEffect(() => {
     let stopped = false;
     // html5-qrcode's stop() throws SYNCHRONOUSLY — "Cannot stop, scanner
@@ -49,7 +60,7 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           (decodedText) => {
             if (stopped) return;
             stopped = true;
-            onScan(decodedText);
+            onScanRef.current(decodedText);
           },
           () => {
             // per-frame "nothing decoded this frame" — not an error, ignore
@@ -80,7 +91,7 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           /* already stopped — nothing to clean up */
         });
     };
-  }, [onScan]);
+  }, []); // mount once, stop only on unmount — see onScanRef above
 
   const errorMessage = error
     ? error === "generic"

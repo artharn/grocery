@@ -1,10 +1,21 @@
+import { Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useDashboardMetrics } from "../hooks/useDashboard";
 import { ApiError } from "../../../api/client";
+import { useAuth } from "../../../context/AuthContext";
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const { hasPermission } = useAuth();
   const { data, isLoading, isError, error } = useDashboardMetrics();
+
+  // "/" is the default post-login landing route, but its nav entry is
+  // hidden without DASHBOARD_VIEW (see Layout.tsx) — send those users
+  // straight to Products (always accessible) instead of a page whose own
+  // link they'd never be shown.
+  if (!hasPermission("DASHBOARD_VIEW")) {
+    return <Navigate to="/products" replace />;
+  }
 
   if (isLoading) {
     return <p className="text-sm text-gray-500">{t("dashboard.loading")}</p>;

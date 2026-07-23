@@ -3,12 +3,16 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import LanguageSwitcher from "./LanguageSwitcher";
 
+// requiredPermission is only set for pages whose entire content is gated
+// by one permission (Dashboard/Reports — every data call on those pages
+// needs it) — Products/Inventory/Sales stay visible to everyone since
+// browsing them needs no permission; only specific actions within do.
 const NAV_ITEMS = [
-  { to: "/", labelKey: "nav.dashboard", icon: "📊" },
-  { to: "/products", labelKey: "nav.products", icon: "📦" },
-  { to: "/inventory", labelKey: "nav.inventory", icon: "🗃️" },
-  { to: "/sales", labelKey: "nav.sales", icon: "🧾" },
-  { to: "/reports", labelKey: "nav.reports", icon: "📈" },
+  { to: "/", labelKey: "nav.dashboard", icon: "📊", requiredPermission: "DASHBOARD_VIEW" },
+  { to: "/products", labelKey: "nav.products", icon: "📦", requiredPermission: null },
+  { to: "/inventory", labelKey: "nav.inventory", icon: "🗃️", requiredPermission: null },
+  { to: "/sales", labelKey: "nav.sales", icon: "🧾", requiredPermission: null },
+  { to: "/reports", labelKey: "nav.reports", icon: "📈", requiredPermission: "REPORT_VIEW" },
 ] as const;
 
 const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
@@ -20,7 +24,11 @@ const navLinkClasses = ({ isActive }: { isActive: boolean }) =>
 
 export default function Layout() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
+
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => item.requiredPermission === null || hasPermission(item.requiredPermission)
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -28,7 +36,7 @@ export default function Layout() {
         <div className="flex items-center gap-6">
           <span className="text-lg font-semibold text-gray-900">{t("auth.appName")}</span>
           <nav className="hidden sm:flex sm:gap-1">
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navLinkClasses}>
                 <span>{item.icon}</span>
                 <span>{t(item.labelKey)}</span>
@@ -53,7 +61,7 @@ export default function Layout() {
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 flex border-t border-gray-200 bg-white sm:hidden">
-        {NAV_ITEMS.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navLinkClasses}>
             <span className="text-lg">{item.icon}</span>
             <span>{t(item.labelKey)}</span>

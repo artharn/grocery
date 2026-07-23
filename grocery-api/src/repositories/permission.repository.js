@@ -14,4 +14,17 @@ const roleHasPermission = async (roleId, permissionCode) => {
   return result.rows[0].allowed;
 };
 
-module.exports = { roleHasPermission };
+const listCodesForRole = async (roleId) => {
+  const result = await pool.query(
+    `SELECT p.code
+     FROM role_permissions rp
+     JOIN permissions p ON p.id = rp.permission_id
+     WHERE rp.role_id = $1
+     ORDER BY p.code ASC`,
+    [roleId]
+  );
+
+  return result.rows.map((row) => row.code);
+};
+
+module.exports = { roleHasPermission, listCodesForRole };
