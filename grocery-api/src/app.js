@@ -1,4 +1,6 @@
 const express = require("express");
+const cors = require("cors");
+const config = require("./config/env");
 const healthRoutes = require("./routes/health.routes");
 const authRoutes = require("./routes/auth.routes");
 const productRoutes = require("./routes/product.routes");
@@ -10,6 +12,7 @@ const errorHandler = require("./middlewares/error");
 
 const app = express();
 
+app.use(cors({ origin: config.corsOrigins }));
 app.use(express.json());
 
 app.use(healthRoutes);

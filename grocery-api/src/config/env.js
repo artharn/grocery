@@ -44,6 +44,12 @@ const config = Object.freeze({
   bcrypt: Object.freeze({
     rounds: parseInt(process.env.BCRYPT_ROUNDS, 10),
   }),
+  corsOrigins: Object.freeze(
+    (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:4173")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  ),
 });
 
 module.exports = config;

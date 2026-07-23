@@ -47,6 +47,24 @@ table.
    (`{ success, data }` / `{ success, error }`) — no exemption like
    `/health` has, since these are real client-facing resources.
 
+## Addendum — product images (added post-launch, migration 009)
+
+Source: user request to display product images in the frontend.
+
+10. Products get an optional `image_url` field (`TEXT`, ≤2048 chars,
+    migration `009_add_image_url_to_products.sql`). Settable on
+    `POST /products` and `PUT /products/:id` alongside the other optional
+    fields, same validation shape as `barcode`/`cost` (any non-empty string
+    up to the length limit; `null` on update clears it). Included in every
+    product response (`GET`/`POST`/`PUT`/`DELETE`).
+11. **Deliberate design for a future phase**: this phase stores only a URL
+    the client supplies (no file upload, no backend-side storage) —
+    intentionally scoped down to a single text column so a later "upload
+    from device" phase can populate the exact same `image_url` field via a
+    new upload endpoint instead of the client pasting a link. The frontend
+    contract (`<img src={product.image_url}>`) does not need to change
+    when that lands — only a new write path does.
+
 ## Out of scope (this task)
 
 - Stock/quantity management — that's `stock_transactions`, covered by the

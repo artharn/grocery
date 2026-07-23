@@ -1,7 +1,7 @@
 const asyncHandler = require("../utils/asyncHandler");
 const productService = require("../services/product.service");
 
-const UPDATABLE_FIELDS = ["name", "price", "barcode", "cost"];
+const UPDATABLE_FIELDS = ["name", "price", "barcode", "cost", "image_url"];
 
 const pickUpdatableFields = (body) =>
   UPDATABLE_FIELDS.reduce((fields, key) => {
@@ -23,8 +23,14 @@ const getOne = asyncHandler(async (req, res) => {
 });
 
 const create = asyncHandler(async (req, res) => {
-  const { name, price, barcode, cost } = req.body;
-  const product = await productService.createProduct({ name, price, barcode, cost });
+  const { name, price, barcode, cost, image_url: imageUrl } = req.body;
+  const product = await productService.createProduct({
+    name,
+    price,
+    barcode,
+    cost,
+    image_url: imageUrl,
+  });
 
   res.status(201).json({ success: true, data: { product } });
 });

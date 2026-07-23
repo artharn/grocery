@@ -17,7 +17,7 @@ const validateProductId = (req, res, next) => {
 };
 
 const validateCreateProduct = (req, res, next) => {
-  const { name, price, barcode, cost } = req.body || {};
+  const { name, price, barcode, cost, image_url: imageUrl } = req.body || {};
 
   if (!isNonEmptyString(name, 255)) {
     return next(new ValidationError("name is required (string, max 255 chars)"));
@@ -35,14 +35,26 @@ const validateCreateProduct = (req, res, next) => {
     return next(new ValidationError("cost must be a number >= 0"));
   }
 
+  if (imageUrl !== undefined && imageUrl !== null && !isNonEmptyString(imageUrl, 2048)) {
+    return next(new ValidationError("image_url must be a string (max 2048 chars)"));
+  }
+
   next();
 };
 
 const validateUpdateProduct = (req, res, next) => {
-  const { name, price, barcode, cost } = req.body || {};
+  const { name, price, barcode, cost, image_url: imageUrl } = req.body || {};
 
-  if (name === undefined && price === undefined && barcode === undefined && cost === undefined) {
-    return next(new ValidationError("at least one of name, price, barcode, cost is required"));
+  if (
+    name === undefined &&
+    price === undefined &&
+    barcode === undefined &&
+    cost === undefined &&
+    imageUrl === undefined
+  ) {
+    return next(
+      new ValidationError("at least one of name, price, barcode, cost, image_url is required")
+    );
   }
 
   if (name !== undefined && !isNonEmptyString(name, 255)) {
@@ -59,6 +71,10 @@ const validateUpdateProduct = (req, res, next) => {
 
   if (cost !== undefined && cost !== null && !isNonNegativeNumber(cost)) {
     return next(new ValidationError("cost must be a number >= 0"));
+  }
+
+  if (imageUrl !== undefined && imageUrl !== null && !isNonEmptyString(imageUrl, 2048)) {
+    return next(new ValidationError("image_url must be a string (max 2048 chars)"));
   }
 
   next();

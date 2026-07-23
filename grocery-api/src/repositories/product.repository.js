@@ -1,9 +1,12 @@
 const pool = require("../../db/database");
 
+const PRODUCT_COLUMNS =
+  "id, barcode, name, price, cost, image_url, is_active, created_at, updated_at";
+
 const findAll = async ({ includeInactive = false } = {}) => {
   const where = includeInactive ? "" : "WHERE is_active = TRUE";
   const result = await pool.query(
-    `SELECT id, barcode, name, price, cost, is_active, created_at, updated_at
+    `SELECT ${PRODUCT_COLUMNS}
      FROM products
      ${where}
      ORDER BY id ASC`
@@ -14,7 +17,7 @@ const findAll = async ({ includeInactive = false } = {}) => {
 
 const findById = async (id) => {
   const result = await pool.query(
-    `SELECT id, barcode, name, price, cost, is_active, created_at, updated_at
+    `SELECT ${PRODUCT_COLUMNS}
      FROM products
      WHERE id = $1`,
     [id]
@@ -23,12 +26,12 @@ const findById = async (id) => {
   return result.rows[0] || null;
 };
 
-const create = async ({ name, price, barcode = null, cost = null }) => {
+const create = async ({ name, price, barcode = null, cost = null, image_url: imageUrl = null }) => {
   const result = await pool.query(
-    `INSERT INTO products (name, price, barcode, cost)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, barcode, name, price, cost, is_active, created_at, updated_at`,
-    [name, price, barcode, cost]
+    `INSERT INTO products (name, price, barcode, cost, image_url)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING ${PRODUCT_COLUMNS}`,
+    [name, price, barcode, cost, imageUrl]
   );
 
   return result.rows[0];
@@ -42,7 +45,7 @@ const update = async (id, fields) => {
     `UPDATE products
      SET ${setClause}, updated_at = NOW()
      WHERE id = $1
-     RETURNING id, barcode, name, price, cost, is_active, created_at, updated_at`,
+     RETURNING ${PRODUCT_COLUMNS}`,
     [id, ...columns.map((col) => fields[col])]
   );
 
@@ -54,7 +57,7 @@ const softDelete = async (id) => {
     `UPDATE products
      SET is_active = FALSE, updated_at = NOW()
      WHERE id = $1
-     RETURNING id, barcode, name, price, cost, is_active, created_at, updated_at`,
+     RETURNING ${PRODUCT_COLUMNS}`,
     [id]
   );
 

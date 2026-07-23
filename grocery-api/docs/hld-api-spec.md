@@ -133,7 +133,7 @@ curl "http://localhost/products?includeInactive=true" \
 
 Success `200`: `{ "success": true, "data": { "products": [ {product}, ... ] } }`
 
-Product shape: `{ id, barcode, name, price, cost, is_active, created_at, updated_at }`
+Product shape: `{ id, barcode, name, price, cost, image_url, is_active, created_at, updated_at }`
 
 ### `GET /products/:id`
 Auth only. Returns regardless of `is_active`.
@@ -156,14 +156,14 @@ curl -X POST http://localhost/products \
   -d '{"name":"Rice 5kg","price":120,"barcode":"BC-001","cost":90}'
 ```
 
-Request: `{ "name": "string ≤255", "price": "number ≥0", "barcode?": "string ≤100 unique", "cost?": "number ≥0" }`
+Request: `{ "name": "string ≤255", "price": "number ≥0", "barcode?": "string ≤100 unique", "cost?": "number ≥0", "image_url?": "string ≤2048" }`
 | 201 | — | created, `is_active` defaults `true` |
-| 400 | `VALIDATION_ERROR` | missing/invalid `name`/`price`/`barcode`/`cost` |
+| 400 | `VALIDATION_ERROR` | missing/invalid `name`/`price`/`barcode`/`cost`/`image_url` |
 | 400 | `VALIDATION_ERROR` | `barcode` already in use (unique constraint) |
 | 401/403 | — | missing token / lacking `PRODUCT_CREATE` |
 
 ### `PUT /products/:id`
-Auth + `PRODUCT_UPDATE`. Partial update — any subset of `name`/`price`/`barcode`/`cost`. `is_active` not settable here.
+Auth + `PRODUCT_UPDATE`. Partial update — any subset of `name`/`price`/`barcode`/`cost`/`image_url`. `is_active` not settable here. `image_url: null` clears a previously set image.
 
 ```bash
 curl -X PUT http://localhost/products/1 \
