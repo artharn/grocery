@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { useTranslation } from "react-i18next";
-
-const READER_ELEMENT_ID = "camera-scanner-reader";
 
 interface CameraScannerProps {
   onScan: (decodedText: string) => void;
@@ -12,103 +10,65 @@ interface CameraScannerProps {
 // Modal camera scanner for both QR and 1D barcodes, per fe-standard.md
 // §5. This is always an alternative input path alongside the plain text
 // field in BarcodeInput — never the only way to enter a code.
+//
+// Uses @zxing/browser rather than html5-qrcode: the latter drives its scan
+// loop off a manual setTimeout + canvas-draw cycle, which is a well-known,
+// long-unresolved compatibility problem on iOS Safari (the video stream
+// visibly plays but decode silently never fires — see
+// https://github.com/mebjas/html5-qrcode/issues/484 and /512, both
+// unresolved upstream). @zxing/browser decodes straight off the <video>
+// element via requestAnimationFrame instead, which doesn't hit that bug.
 export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const { t } = useTranslation();
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  // Structured, not pre-translated — translation happens at render time so
-  // this effect doesn't need `t` in its dependency array (which would
-  // restart the camera stream on every language switch).
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<{ message: string } | "generic" | null>(null);
 
-  // `onScan` is passed as an inline arrow function by every caller (a new
-  // reference on every render of the parent). Keeping it out of the
-  // effect's dependency array — and reading it via a ref instead — means
-  // an unrelated re-render of the parent (e.g. a background query
-  // refetch) can't tear down and restart the camera mid-scan. Previously
-  // it WAS a dependency, which is exactly why scanning could silently
-  // never produce a result: the video stream kept restarting before a
-  // frame ever got decoded.
+  // See CameraScanner's git history for why onScan is read via a ref
+  // rather than as an effect dependency: it's a new function reference on
+  // every parent render, and including it in the deps array would restart
+  // the camera stream on any unrelated re-render, before a frame could
+  // ever be decoded.
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
 
   useEffect(() => {
     let stopped = false;
-    // html5-qrcode's stop() throws SYNCHRONOUSLY — "Cannot stop, scanner
-    // is not running or paused" — if called before start() has actually
-    // resolved (e.g. no camera device, permission denied, or React's
-    // StrictMode dev-mode double-invoke unmounting before start settles).
-    // Track this explicitly rather than assuming stop() is always safe to
-    // call once start() has been kicked off.
-    let running = false;
+    let controls: IScannerControls | null = null;
     const handleStartError = (err: unknown) => {
-      if (stopped) return; // effect already cleaned up (e.g. StrictMode's dev double-invoke) — ignore
+      if (stopped) return; // effect already cleaned up — ignore
       setError(err instanceof Error ? { message: err.message } : "generic");
     };
 
-    // useBarCodeDetectorIfSupported belongs to the constructor's config,
-    // not the scan config passed to start() below.
-    const scanner = new Html5Qrcode(READER_ELEMENT_ID, {
-      verbose: false,
-      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    });
-    scannerRef.current = scanner;
-
-    // start() normally rejects on failure, but can also throw
-    // synchronously (e.g. a scan session already active on this element).
-    // A synchronous throw isn't caught by .catch() on the returned
-    // promise, so it must be wrapped directly or it crashes the component.
-    try {
-      scanner
-        .start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            // A fixed 250x250 box can end up larger than the actual video
-            // feed on a narrow phone viewport (this modal is capped at
-            // max-w-sm) — when that happens the library's scan region
-            // stops lining up with the real video frame and decoding
-            // silently never succeeds, even though the stream visibly
-            // keeps running. Sizing it relative to the real viewfinder
-            // avoids that, per html5-qrcode's own recommended usage.
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const size = Math.floor(minEdge * 0.7);
-              return { width: size, height: size };
-            },
-          },
-          (decodedText) => {
-            if (stopped) return;
-            stopped = true;
-            onScanRef.current(decodedText);
-          },
-          () => {
-            // per-frame "nothing decoded this frame" — not an error, ignore
-          }
-        )
-        .then(() => {
-          if (stopped) {
-            // Cleanup already ran before start() settled (e.g. the modal
-            // was closed mid-permission-prompt) — stop the stream we just
-            // opened instead of leaking an active camera.
-            scanner.stop().catch(() => {});
-            return;
-          }
-          running = true;
-        })
-        .catch(handleStartError);
-    } catch (err) {
-      handleStartError(err);
-    }
+    const reader = new BrowserMultiFormatReader();
+    reader
+      .decodeFromConstraints(
+        { video: { facingMode: "environment" } },
+        videoRef.current!,
+        (result, _err, ctrl) => {
+          // The callback fires on every scan attempt, success or not —
+          // "nothing decoded in this frame" is the overwhelmingly common
+          // case and isn't an error worth surfacing, only a real result is.
+          if (stopped || !result) return;
+          stopped = true;
+          ctrl.stop();
+          onScanRef.current(result.getText());
+        }
+      )
+      .then((c) => {
+        if (stopped) {
+          // Cleanup already ran before this settled (e.g. the modal was
+          // closed mid-permission-prompt) — stop the stream we just
+          // opened instead of leaking an active camera.
+          c.stop();
+          return;
+        }
+        controls = c;
+      })
+      .catch(handleStartError);
 
     return () => {
       stopped = true;
-      if (!running) return; // start() never succeeded — nothing to stop
-      scanner
-        .stop()
-        .then(() => scanner.clear())
-        .catch(() => {
-          /* already stopped — nothing to clean up */
-        });
+      controls?.stop();
     };
   }, []); // mount once, stop only on unmount — see onScanRef above
 
@@ -132,13 +92,16 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           </button>
         </div>
 
-        {errorMessage ? (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        {errorMessage && (
+          <p role="alert" className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             {errorMessage}
           </p>
-        ) : (
-          <div id={READER_ELEMENT_ID} className="overflow-hidden rounded-lg" />
         )}
+        <video
+          ref={videoRef}
+          className="w-full rounded-lg object-cover"
+          style={{ display: errorMessage ? "none" : undefined }}
+        />
       </div>
     </div>
   );

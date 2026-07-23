@@ -6,8 +6,12 @@ document; if it can't comply, fix the rule in the same change instead of
 quietly deviating.
 
 Stack: React 19 + TypeScript, Vite, Tailwind CSS v4, React Router,
-TanStack Query, `html5-qrcode` for camera-based scanning. Deploys to
-Vercel as a static SPA.
+TanStack Query, `@zxing/browser` for camera-based scanning (works on
+both QR and 1D barcodes, decodes straight off a `<video>` element via
+`requestAnimationFrame` — switched from `html5-qrcode` because that
+library's manual setTimeout+canvas scan loop hits a long-unresolved
+upstream iOS Safari bug where the stream visibly plays but decode never
+fires). Deploys to Vercel as a static SPA.
 
 ---
 
@@ -132,7 +136,7 @@ component (`components/BarcodeInput.tsx`):
    keyboard-wedge devices) work with zero extra code — they just emit
    fast keystrokes + Enter into whatever's focused.
 2. **"Scan with camera" button** opens `CameraScanner.tsx`, a modal using
-   `html5-qrcode` against the device camera (works on both QR and 1D
+   `@zxing/browser` against the device camera (works on both QR and 1D
    barcodes), and fills the same field on a successful decode.
 
 Never build a flow that requires the camera — it's always an alternative
