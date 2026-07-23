@@ -51,6 +51,12 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           if (stopped || !result) return;
           stopped = true;
           ctrl.stop();
+          // TEMP DEBUG — remove once we've confirmed decode is/isn't the
+          // broken step on the reporter's device. Fires on the raw result
+          // straight from zxing, before any app logic (onChange/onSubmit/
+          // BarcodeInput) runs, to isolate "decode never fires" from "decode
+          // works but something downstream doesn't."
+          alert("SCAN OK, decoded: " + result.getText());
           onScanRef.current(result.getText());
         }
       )
