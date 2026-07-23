@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import * as productsApi from "../../../api/products";
-import type { CreateProductInput, UpdateProductInput } from "../../../api/products";
+import * as productsApi from "../api/products";
+import type { CreateProductInput, UpdateProductInput } from "../api/products";
 
-// Only the Products feature's own pages (ProductList, ProductForm) mutate
-// products — Inventory and Sales only ever read the list (see the shared
-// useProducts in src/hooks/), so these stay feature-owned.
+// Shared at the top level, not under features/products/ — Sales and
+// Inventory also create products now (the "not found while scanning"
+// quick-create flow), not just the Products feature's own pages. Same
+// promote-once-used-by-2+-features rule as the shared useProducts query.
 export function useCreateProduct() {
   const queryClient = useQueryClient();
   return useMutation({

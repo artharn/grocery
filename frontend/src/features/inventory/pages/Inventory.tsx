@@ -6,15 +6,22 @@ import { useStockBalance, useStockTransactions, useCreateStockTransaction } from
 import { ApiError } from "../../../api/client";
 import BarcodeInput from "../../../components/BarcodeInput";
 import ProductThumbnail from "../../../components/ProductThumbnail";
+import ProductForm from "../../../components/ProductForm";
 import { useAuth } from "../../../context/AuthContext";
 
 type MovementType = "IN" | "OUT" | "ADJUST";
 
 export default function Inventory() {
   const { t } = useTranslation();
-  const { data: products } = useProducts(true); // includes inactive — stock stays viewable for them
+  const { hasPermission } = useAuth();
+  const canCreateProduct = hasPermission("PRODUCT_CREATE");
+  const { data: products, isLoading } = useProducts(true); // includes inactive — stock stays viewable for them
   const [search, setSearch] = useState("");
   const [searchError, setSearchError] = useState<string | null>(null);
+  // Barcode from a search that matched nothing — offered as a prefill if the
+  // user creates a new product for it.
+  const [notFoundBarcode, setNotFoundBarcode] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
 
   const filtered = useMemo(() => {
@@ -32,14 +39,23 @@ export default function Inventory() {
     setSelected(product);
     setSearch("");
     setSearchError(null);
+    setNotFoundBarcode(null);
   };
 
   const handleSubmit = (value: string) => {
     const code = value.trim();
-    if (!code || !products) return;
+    if (!code) return;
+    setNotFoundBarcode(null);
+    // Products haven't finished loading yet — searching against an empty
+    // list would otherwise silently do nothing.
+    if (isLoading || !products) {
+      setSearchError(t("inventory.stillLoading"));
+      return;
+    }
     const match = products.find((p) => p.barcode === code);
     if (!match) {
       setSearchError(t("inventory.noBarcodeMatch", { code }));
+      setNotFoundBarcode(code);
       return;
     }
     selectProduct(match);
@@ -54,16 +70,28 @@ export default function Inventory() {
         onChange={(v) => {
           setSearch(v);
           setSearchError(null);
+          setNotFoundBarcode(null);
         }}
         onSubmit={handleSubmit}
         placeholder={t("inventory.searchPlaceholder")}
         autoFocus
+        loading={isLoading}
       />
 
       {searchError && (
-        <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {searchError}
-        </p>
+        <div className="mt-3 flex flex-col items-start gap-2 rounded-lg bg-red-50 px-3 py-2">
+          <p role="alert" className="text-sm text-red-700">
+            {searchError}
+          </p>
+          {notFoundBarcode && canCreateProduct && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="text-sm font-medium text-emerald-700 hover:underline"
+            >
+              {t("products.createWithBarcode")}
+            </button>
+          )}
+        </div>
       )}
 
       {filtered.length > 0 && (
@@ -98,6 +126,17 @@ export default function Inventory() {
         <div className="mt-6">
           <ProductStockDetail product={selected} onClose={() => setSelected(null)} />
         </div>
+      )}
+
+      {showCreateForm && (
+        <ProductForm
+          initialBarcode={notFoundBarcode ?? undefined}
+          onClose={() => setShowCreateForm(false)}
+          onSaved={(product) => {
+            setSearchError(null);
+            selectProduct(product);
+          }}
+        />
       )}
     </div>
   );

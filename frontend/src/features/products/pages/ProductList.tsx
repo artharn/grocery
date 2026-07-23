@@ -2,12 +2,12 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Product } from "../../../types/api";
 import { useProducts } from "../../../hooks/useProducts";
-import { useDeleteProduct } from "../hooks/useProductMutations";
+import { useDeleteProduct } from "../../../hooks/useProductMutations";
 import { ApiError } from "../../../api/client";
 import BarcodeInput from "../../../components/BarcodeInput";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import ProductThumbnail from "../../../components/ProductThumbnail";
-import ProductForm from "./ProductForm";
+import ProductForm from "../../../components/ProductForm";
 import { useAuth } from "../../../context/AuthContext";
 
 export default function ProductList() {

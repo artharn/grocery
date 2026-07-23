@@ -43,11 +43,10 @@ Products and Sales), then view/act on that one product's ledger.
 4. **409** (`hld-api-spec.md` §5: inactive product, or balance would go
    negative) shows the backend's message inline; balance/ledger are left as
    they were (the write never happened, so there's nothing to reconcile).
-5. Any 403 (role lacks `STOCK_ADJUST`) surfaces inline on the specific
-   submit attempt — same reactive-403 pattern as Products/Sales; the form
-   is not hidden proactively, since the two `GET` endpoints need no
-   permission at all (any authenticated user can view stock) and only the
-   `POST` is gated.
+5. **Superseded — see addendum below.** (Original decision, kept for
+   history: any 403 (role lacks `STOCK_ADJUST`) surfaces inline on the
+   specific submit attempt, form not hidden proactively, since the two
+   `GET` endpoints need no permission and only the `POST` is gated.)
 6. Mobile: picker, balance, ledger, and form all stack in a single column
    usable at phone width.
 
@@ -59,3 +58,30 @@ Products and Sales), then view/act on that one product's ledger.
   already-aggregated endpoint, not something this page computes.
 - Editing or deleting a past transaction — the ledger is append-only, no
   such endpoint exists.
+
+## Addendum — proactive permission hiding (post-launch)
+
+Source: same proactive-hiding request as `auth-and-shell.md`'s addendum.
+Supersedes criterion 5 above: the entire record-movement form (type/
+quantity/note/submit) is hidden without `STOCK_ADJUST`, not just reacted
+to on submit — balance and ledger stay visible to any authenticated user,
+matching the `GET` endpoints' actual permission requirements.
+
+## Addendum — loading state and scan-to-create (post-launch)
+
+Source: same "scan does nothing" report covered in `sales-pos.md`'s
+addendum — `handleSubmit` here had the identical
+`if (!code || !products) return` silent no-op when the product list
+query hadn't resolved yet, plus the same request to offer creating a
+product on a not-found scan.
+
+1. **Loading state**: `BarcodeInput` gets `loading={isLoading}` from
+   `useProducts`; a spinner shows without disabling the field.
+   `handleSubmit` checks `isLoading` before searching and shows
+   `inventory.stillLoading` instead of silently returning.
+2. **Not-found → offer to create**: same pattern as Sales — the inline
+   error gets a "+ Create product with this barcode" action gated by
+   `PRODUCT_CREATE`, opening the shared `ProductForm` with the scanned
+   code prefilled. On save, the new product is auto-selected so its
+   (empty) stock detail is immediately visible, ready for a first `IN`
+   movement — no dead end.

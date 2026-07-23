@@ -1,24 +1,34 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { Product } from "../../../types/api";
+import type { Product } from "../types/api";
 import { useCreateProduct, useUpdateProduct } from "../hooks/useProductMutations";
-import { ApiError } from "../../../api/client";
-import BarcodeInput from "../../../components/BarcodeInput";
-import ProductThumbnail from "../../../components/ProductThumbnail";
+import { ApiError } from "../api/client";
+import BarcodeInput from "./BarcodeInput";
+import ProductThumbnail from "./ProductThumbnail";
 
 interface ProductFormProps {
   product?: Product; // undefined = create mode
+  // Prefills the barcode field in create mode only — e.g. a barcode
+  // scanned in Sales/Inventory that didn't match any existing product.
+  initialBarcode?: string;
   onClose: () => void;
+  // Fired with the created/updated product right before onClose, so a
+  // caller outside the Products feature (Sales adding it to the cart,
+  // Inventory selecting it) can react to what was just saved.
+  onSaved?: (product: Product) => void;
 }
 
-export default function ProductForm({ product, onClose }: ProductFormProps) {
+// Shared at the top level, not under features/products/ — Sales and
+// Inventory both open this too (quick-create from a not-found scan), not
+// just the Products feature's own pages.
+export default function ProductForm({ product, initialBarcode, onClose, onSaved }: ProductFormProps) {
   const { t } = useTranslation();
   const isEdit = !!product;
 
   const [name, setName] = useState(product?.name ?? "");
   const [price, setPrice] = useState(product?.price ?? "");
   const [cost, setCost] = useState(product?.cost ?? "");
-  const [barcode, setBarcode] = useState(product?.barcode ?? "");
+  const [barcode, setBarcode] = useState(product?.barcode ?? initialBarcode ?? "");
   const [imageUrl, setImageUrl] = useState(product?.image_url ?? "");
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -58,7 +68,12 @@ export default function ProductForm({ product, onClose }: ProductFormProps) {
       image_url: imageUrl.trim() === "" ? undefined : imageUrl.trim(),
     };
 
-    mutation.mutate(payload, { onSuccess: onClose });
+    mutation.mutate(payload, {
+      onSuccess: (result) => {
+        onSaved?.(result.product);
+        onClose();
+      },
+    });
   };
 
   const apiError = mutation.error instanceof ApiError ? mutation.error.message : null;

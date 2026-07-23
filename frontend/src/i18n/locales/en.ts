@@ -6,6 +6,7 @@ const en = {
     close: "Close",
     optional: "Optional",
     edit: "Edit",
+    loading: "Loading…",
   },
   nav: {
     dashboard: "Dashboard",
@@ -56,6 +57,7 @@ const en = {
     deactivateTitle: "Deactivate product?",
     deactivateMessage:
       '"{{name}}" will be deactivated and hidden from the default list. There is currently no way to reactivate a product through this app — this cannot be undone.',
+    createWithBarcode: "+ Create product with this barcode",
   },
   productForm: {
     editTitle: "Edit {{name}}",
@@ -95,6 +97,7 @@ const en = {
     loadingHistory: "Loading history…",
     historyFailed: "Failed to load history.",
     noMovements: "No stock movements yet.",
+    stillLoading: "Still loading products — try scanning again in a moment.",
   },
   sales: {
     title: "Sales",
@@ -114,6 +117,7 @@ const en = {
     decreaseQty: "Decrease {{name}} quantity",
     increaseQty: "Increase {{name}} quantity",
     productFallback: "Product #{{id}}",
+    stillLoading: "Still loading products — try scanning again in a moment.",
   },
   dashboard: {
     title: "Dashboard",

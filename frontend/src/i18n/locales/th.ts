@@ -7,6 +7,7 @@ const th: TranslationResource = {
     close: "ปิด",
     optional: "ไม่บังคับ",
     edit: "แก้ไข",
+    loading: "กำลังโหลด…",
   },
   nav: {
     dashboard: "แดชบอร์ด",
@@ -57,6 +58,7 @@ const th: TranslationResource = {
     deactivateTitle: "ปิดใช้งานสินค้านี้หรือไม่?",
     deactivateMessage:
       '"{{name}}" จะถูกปิดใช้งานและซ่อนจากรายการเริ่มต้น ขณะนี้ยังไม่มีวิธีเปิดใช้งานสินค้านี้อีกครั้งในแอปนี้ — ไม่สามารถย้อนกลับได้',
+    createWithBarcode: "+ สร้างสินค้าด้วยบาร์โค้ดนี้",
   },
   productForm: {
     editTitle: "แก้ไข {{name}}",
@@ -96,6 +98,7 @@ const th: TranslationResource = {
     loadingHistory: "กำลังโหลดประวัติ…",
     historyFailed: "โหลดประวัติไม่สำเร็จ",
     noMovements: "ยังไม่มีการเคลื่อนไหวของสต็อก",
+    stillLoading: "กำลังโหลดสินค้าอยู่ — ลองสแกนอีกครั้งในอีกสักครู่",
   },
   sales: {
     title: "ขายสินค้า",
@@ -115,6 +118,7 @@ const th: TranslationResource = {
     decreaseQty: "ลดจำนวน {{name}}",
     increaseQty: "เพิ่มจำนวน {{name}}",
     productFallback: "สินค้า #{{id}}",
+    stillLoading: "กำลังโหลดสินค้าอยู่ — ลองสแกนอีกครั้งในอีกสักครู่",
   },
   dashboard: {
     title: "แดชบอร์ด",

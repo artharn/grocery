@@ -7,6 +7,7 @@ import { useCreateSale } from "../hooks/useSales";
 import { ApiError } from "../../../api/client";
 import BarcodeInput from "../../../components/BarcodeInput";
 import ProductThumbnail from "../../../components/ProductThumbnail";
+import ProductForm from "../../../components/ProductForm";
 import { useAuth } from "../../../context/AuthContext";
 
 interface CartLine {
@@ -20,11 +21,17 @@ export default function SalesPos() {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canCheckout = hasPermission("SALE_CREATE");
+  const canCreateProduct = hasPermission("PRODUCT_CREATE");
   const { data: products, isLoading, isError } = useProducts(false);
   const createSale = useCreateSale();
 
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
+  // Barcode from a scan that matched nothing — offered as a prefill if the
+  // user creates a new product for it (cleared as soon as they act on it
+  // or scan/type something else).
+  const [notFoundBarcode, setNotFoundBarcode] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ result: CreateSaleResult; names: Map<number, string> } | null>(
@@ -44,6 +51,7 @@ export default function SalesPos() {
 
   const addToCart = (product: Product) => {
     setScanError(null);
+    setNotFoundBarcode(null);
     setCheckoutError(null);
     setCart((prev) => {
       const existing = prev.find((line) => line.productId === product.id);
@@ -58,10 +66,19 @@ export default function SalesPos() {
 
   const handleScanSubmit = (value: string) => {
     const code = value.trim();
-    if (!code || !products) return;
+    if (!code) return;
+    setNotFoundBarcode(null);
+    // Products haven't finished loading yet — scanning into an empty list
+    // would otherwise silently do nothing. Tell the user instead of
+    // matching against data that isn't there yet.
+    if (isLoading || !products) {
+      setScanError(t("sales.stillLoading"));
+      return;
+    }
     const match = products.find((p) => p.barcode === code);
     if (!match) {
       setScanError(t("sales.noBarcodeMatch", { code }));
+      setNotFoundBarcode(code);
       return;
     }
     addToCart(match);
@@ -110,20 +127,31 @@ export default function SalesPos() {
           onChange={(v) => {
             setScan(v);
             setScanError(null);
+            setNotFoundBarcode(null);
           }}
           onSubmit={handleScanSubmit}
           placeholder={t("sales.scanPlaceholder")}
           autoFocus
+          loading={isLoading}
         />
       </div>
 
       {scanError && (
-        <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {scanError}
-        </p>
+        <div className="mb-3 flex flex-col items-start gap-2 rounded-lg bg-red-50 px-3 py-2">
+          <p role="alert" className="text-sm text-red-700">
+            {scanError}
+          </p>
+          {notFoundBarcode && canCreateProduct && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="text-sm font-medium text-emerald-700 hover:underline"
+            >
+              {t("products.createWithBarcode")}
+            </button>
+          )}
+        </div>
       )}
 
-      {isLoading && <p className="text-sm text-gray-500">{t("sales.loadingProducts")}</p>}
       {isError && <p className="text-sm text-red-700">{t("sales.loadFailed")}</p>}
 
       {filtered.length > 0 && (
@@ -212,6 +240,19 @@ export default function SalesPos() {
           )}
         </div>
       </div>
+
+      {showCreateForm && (
+        <ProductForm
+          initialBarcode={notFoundBarcode ?? undefined}
+          onClose={() => setShowCreateForm(false)}
+          onSaved={(product) => {
+            setScan("");
+            setScanError(null);
+            setNotFoundBarcode(null);
+            addToCart(product);
+          }}
+        />
+      )}
     </div>
   );
 }

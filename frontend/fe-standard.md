@@ -153,7 +153,10 @@ phones/tablets at a counter, not just desktop.
 - Components: PascalCase filename matching the exported component, one
   default export per file.
 - Pages live under `features/<Feature>/pages/`, named for the screen
-  (`ProductList.tsx`, `ProductForm.tsx`), not generic (`index.tsx`).
+  (e.g. `ProductList.tsx`), not generic (`index.tsx`). A page-like
+  component used by 2+ features (e.g. `ProductForm.tsx`, opened from
+  Products, Sales, and Inventory) is promoted to shared `components/`
+  per §1, not duplicated per feature.
 
 ## 8. Deployment (Vercel)
 
