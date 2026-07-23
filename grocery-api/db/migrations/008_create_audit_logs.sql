@@ -1,0 +1,8 @@
+CREATE TABLE audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  action VARCHAR(100) NOT NULL,
+  entity VARCHAR(100) NOT NULL,
+  entity_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

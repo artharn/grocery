@@ -144,4 +144,8 @@ dist
 # Cloudflare exe
 /cloudflared.exe
 
+# Local tunnel launcher scripts (hardcoded to this machine's ngrok domain/paths)
+/start-tunnel.bat
+/stop-tunnel.bat
+
 # End of https://www.toptal.com/developers/gitignore/api/node

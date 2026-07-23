@@ -1,0 +1,7 @@
+CREATE TABLE sales (
+  id SERIAL PRIMARY KEY,
+  sale_no VARCHAR(50) NOT NULL UNIQUE,
+  total_amount NUMERIC(10,2) NOT NULL,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

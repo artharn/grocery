@@ -1,34 +1,25 @@
-require("dotenv").config();
-
 const express = require("express");
-const pool = require("../db/database");
+const healthRoutes = require("./routes/health.routes");
+const authRoutes = require("./routes/auth.routes");
+const productRoutes = require("./routes/product.routes");
+const stockRoutes = require("./routes/stock.routes");
+const saleRoutes = require("./routes/sale.routes");
+const dashboardRoutes = require("./routes/dashboard.routes");
+const reportRoutes = require("./routes/report.routes");
+const errorHandler = require("./middlewares/error");
 
 const app = express();
 
 app.use(express.json());
 
-app.get("/health", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT NOW()");
+app.use(healthRoutes);
+app.use(authRoutes);
+app.use(productRoutes);
+app.use(stockRoutes);
+app.use(saleRoutes);
+app.use(dashboardRoutes);
+app.use(reportRoutes);
 
-    res.json({
-      status: "OK",
-      database: "CONNECTED With apply env",
-      time: result.rows[0].now,
-    });
-  } catch (error) {
-    console.error(error);
+app.use(errorHandler);
 
-    res.status(500).json({
-      status: "ERROR",
-      database: "DISCONNECTED",
-      message: error.message,
-    });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`API Running on port ${PORT}`);
-});
+module.exports = app;

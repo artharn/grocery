@@ -1,11 +1,12 @@
 const { Pool } = require("pg");
+const config = require("../src/config/env");
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT, 10),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  host: config.db.host,
+  port: config.db.port,
+  database: config.db.name,
+  user: config.db.user,
+  password: config.db.password,
 });
 
 module.exports = pool;
