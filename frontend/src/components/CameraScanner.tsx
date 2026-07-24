@@ -18,6 +18,41 @@ interface FocusableVideoConstraints extends MediaTrackConstraints {
   advanced?: (MediaTrackConstraintSet & { focusMode?: "continuous" })[];
 }
 
+// Native BarcodeDetector isn't in TS's bundled DOM types yet either.
+// Browser-built-in, hardware-accelerated where available (mainly
+// Chromium on Android; not Safari) — raced against zxing below rather
+// than relied on alone, since it's unavailable on a large chunk of
+// devices and zxing is the only path there.
+interface NativeBarcodeDetector {
+  detect(image: ImageBitmap): Promise<{ rawValue: string }[]>;
+}
+interface NativeBarcodeDetectorConstructor {
+  new (options: { formats: string[] }): NativeBarcodeDetector;
+  getSupportedFormats?(): Promise<string[]>;
+}
+declare global {
+  interface Window {
+    BarcodeDetector?: NativeBarcodeDetectorConstructor;
+  }
+}
+// Same set @zxing/library decodes by default — kept in sync manually
+// since there's no shared source of truth between the two.
+const NATIVE_DETECTOR_FORMATS = [
+  "qr_code",
+  "aztec",
+  "codabar",
+  "code_39",
+  "code_93",
+  "code_128",
+  "data_matrix",
+  "itf",
+  "ean_13",
+  "ean_8",
+  "pdf_417",
+  "upc_a",
+  "upc_e",
+];
+
 // Fraction of the video's shorter native dimension used as the scan
 // target — both what's visually outlined for the user to aim at, and
 // the only region actually decoded each frame. Decoding the full frame
@@ -87,6 +122,20 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     };
 
     const reader = new BrowserMultiFormatReader();
+    const nativeDetector = window.BarcodeDetector
+      ? new window.BarcodeDetector({ formats: NATIVE_DETECTOR_FORMATS })
+      : null;
+    // Only one in-flight detect() call at a time — if a frame's detect()
+    // hasn't resolved by the next requestVideoFrameCallback tick, skip
+    // starting another rather than piling up overlapping calls.
+    let nativeDetectInFlight = false;
+
+    const succeed = (text: string) => {
+      if (stopped) return;
+      stopped = true;
+      onScanRef.current(text);
+    };
+
     // Reused across every frame rather than recreated — a fresh canvas
     // per attempt (what reader.decode(videoElement) does internally at
     // full frame size) is unnecessary allocation churn at scan rate.
@@ -150,20 +199,41 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           cropRect.size,
           cropRect.size
         );
+
+        // Native detector races alongside zxing below rather than being
+        // tried first-then-fallback: it's async (a snapshot + one browser
+        // round-trip) where zxing is synchronous, so waiting on it before
+        // trying zxing would slow down the common case where zxing alone
+        // is plenty. `succeed()` is idempotent via the `stopped` guard, so
+        // whichever resolves first simply wins and the other's eventual
+        // result (if any) is silently discarded.
+        if (nativeDetector && !nativeDetectInFlight) {
+          nativeDetectInFlight = true;
+          createImageBitmap(cropCanvas)
+            .then((bitmap) => nativeDetector.detect(bitmap))
+            .then((barcodes) => {
+              if (barcodes.length > 0) succeed(barcodes[0].rawValue);
+            })
+            .catch(() => {
+              // Detection failure (e.g. unsupported format) — zxing still
+              // gets its own attempt below on the same frame.
+            })
+            .finally(() => {
+              nativeDetectInFlight = false;
+            });
+        }
+
         try {
           // decodeFromCanvas throws (NotFoundException, the overwhelmingly
           // common case) rather than returning when nothing decodes.
           const result = reader.decodeFromCanvas(cropCanvas);
-          if (!stopped) {
-            stopped = true;
-            onScanRef.current(result.getText());
-          }
-          return; // got a result — don't schedule another frame
+          succeed(result.getText());
+          if (stopped) return; // got a result — don't schedule another frame
         } catch {
           // No code found in this frame — expected on nearly every call.
         }
       }
-      scheduleNextFrame(scanFrame);
+      if (!stopped) scheduleNextFrame(scanFrame);
     };
 
     const videoConstraints: FocusableVideoConstraints = {
