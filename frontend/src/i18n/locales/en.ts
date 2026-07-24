@@ -32,6 +32,7 @@ const en = {
     close: "Close scanner",
     cameraErrorGeneric: "Could not start the camera. Check permissions.",
     cameraErrorWithMessage: "Could not start the camera: {{message}}",
+    distanceHint: "Hold the code inside the box, about a hand's width from the camera",
   },
   confirmDialog: {
     defaultConfirm: "Confirm",

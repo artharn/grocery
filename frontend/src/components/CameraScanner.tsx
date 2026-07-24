@@ -7,6 +7,17 @@ interface CameraScannerProps {
   onClose: () => void;
 }
 
+// `focusMode` isn't in TS's standard MediaTrackConstraintSet — it's a
+// non-standard extension (Image Capture API draft) that Android Chrome
+// honors and other browsers silently ignore inside `advanced` (per spec,
+// an unsupported/unrecognized advanced constraint set is skipped, not an
+// error). iOS Safari exposes no camera focus control to web JS at all, so
+// this is a no-op there — the on-screen distance hint is what actually
+// helps on that platform.
+interface FocusableVideoConstraints extends MediaTrackConstraints {
+  advanced?: (MediaTrackConstraintSet & { focusMode?: "continuous" })[];
+}
+
 // Fraction of the video's shorter native dimension used as the scan
 // target — both what's visually outlined for the user to aim at, and
 // the only region actually decoded each frame. Decoding the full frame
@@ -155,8 +166,12 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
       scheduleNextFrame(scanFrame);
     };
 
+    const videoConstraints: FocusableVideoConstraints = {
+      facingMode: "environment",
+      advanced: [{ focusMode: "continuous" }],
+    };
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: "environment" } })
+      .getUserMedia({ video: videoConstraints })
       .then((mediaStream) => {
         if (stopped) {
           mediaStream.getTracks().forEach((track) => track.stop());
@@ -230,6 +245,9 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
             />
           )}
         </div>
+        {!errorMessage && (
+          <p className="mt-2 text-center text-xs text-gray-500">{t("camera.distanceHint")}</p>
+        )}
       </div>
     </div>
   );

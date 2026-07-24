@@ -33,6 +33,7 @@ const th: TranslationResource = {
     close: "ปิดตัวสแกน",
     cameraErrorGeneric: "ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งาน",
     cameraErrorWithMessage: "ไม่สามารถเปิดกล้องได้: {{message}}",
+    distanceHint: "วางบาร์โค้ด/QR ให้อยู่ในกรอบ ห่างจากกล้องประมาณหนึ่งฝ่ามือ",
   },
   confirmDialog: {
     defaultConfirm: "ยืนยัน",
