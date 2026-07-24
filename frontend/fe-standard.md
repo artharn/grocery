@@ -6,12 +6,16 @@ document; if it can't comply, fix the rule in the same change instead of
 quietly deviating.
 
 Stack: React 19 + TypeScript, Vite, Tailwind CSS v4, React Router,
-TanStack Query, `@zxing/browser` for camera-based scanning (works on
-both QR and 1D barcodes, decodes straight off a `<video>` element via
-`requestAnimationFrame` — switched from `html5-qrcode` because that
-library's manual setTimeout+canvas scan loop hits a long-unresolved
-upstream iOS Safari bug where the stream visibly plays but decode never
-fires). Deploys to Vercel as a static SPA.
+TanStack Query, `@zxing/browser`'s decode primitives for camera-based
+scanning (works on both QR and 1D barcodes), driven by a custom
+`requestVideoFrameCallback` loop in `CameraScanner.tsx` rather than the
+library's own built-in `decodeFromConstraints` scan loop or
+`html5-qrcode` — both of the latter schedule decode attempts on a plain
+timer and capture frames via `canvas.drawImage(video)`, which is a
+pattern iOS Safari is known to sometimes hand a stale/frozen frame under
+(the stream visibly plays, decode never fires). `requestVideoFrameCallback`
+fires only when a genuinely new frame is composited, sidestepping that.
+Deploys to Vercel as a static SPA.
 
 ---
 

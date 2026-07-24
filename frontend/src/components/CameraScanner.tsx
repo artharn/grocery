@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import { useTranslation } from "react-i18next";
 
 interface CameraScannerProps {
@@ -11,70 +11,108 @@ interface CameraScannerProps {
 // §5. This is always an alternative input path alongside the plain text
 // field in BarcodeInput — never the only way to enter a code.
 //
-// Uses @zxing/browser rather than html5-qrcode: the latter drives its scan
-// loop off a manual setTimeout + canvas-draw cycle, which is a well-known,
-// long-unresolved compatibility problem on iOS Safari (the video stream
-// visibly plays but decode silently never fires — see
-// https://github.com/mebjas/html5-qrcode/issues/484 and /512, both
-// unresolved upstream). @zxing/browser decodes straight off the <video>
-// element via requestAnimationFrame instead, which doesn't hit that bug.
+// Drives its own requestVideoFrameCallback loop instead of using
+// @zxing/browser's built-in decodeFromConstraints (which — like
+// html5-qrcode before it — schedules decode attempts on a plain
+// setTimeout and captures each frame via canvas.drawImage(video)).
+// Confirmed on a real device: that pattern works on Android Chrome but
+// never decodes anything on iOS Safari, even though the <video> element
+// itself keeps visibly playing — Safari is known to sometimes hand
+// drawImage() a stale/frozen frame under a timer-driven capture loop
+// (see e.g. https://github.com/mebjas/html5-qrcode/issues/890).
+// requestVideoFrameCallback (Safari 15.4+) instead fires exactly when a
+// new frame is composited, so each decode attempt reads a genuinely
+// fresh frame regardless of browser.
 export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<{ message: string } | "generic" | null>(null);
 
-  // See CameraScanner's git history for why onScan is read via a ref
-  // rather than as an effect dependency: it's a new function reference on
-  // every parent render, and including it in the deps array would restart
-  // the camera stream on any unrelated re-render, before a frame could
-  // ever be decoded.
+  // See below for why onScan is read via a ref rather than as an effect
+  // dependency: it's a new function reference on every parent render, and
+  // including it in the deps array would restart the camera stream on any
+  // unrelated re-render, before a frame could ever be decoded.
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
 
   useEffect(() => {
+    // Captured once: this modal renders the <video> unconditionally for
+    // its whole lifetime, so the node itself never changes underneath
+    // this effect — safe to read once and reuse in cleanup.
+    const videoElement = videoRef.current;
     let stopped = false;
-    let controls: IScannerControls | null = null;
+    let stream: MediaStream | null = null;
+    let usingVideoFrameCallback = false;
+    let frameHandle: number | null = null;
+
     const handleStartError = (err: unknown) => {
       if (stopped) return; // effect already cleaned up — ignore
+      // getUserMedia can succeed (camera permission granted, stream
+      // assigned to `stream` below) and video.play() still reject after —
+      // stop the already-granted stream so the camera doesn't stay
+      // active behind an error screen.
+      stream?.getTracks().forEach((track) => track.stop());
       setError(err instanceof Error ? { message: err.message } : "generic");
     };
 
     const reader = new BrowserMultiFormatReader();
-    reader
-      .decodeFromConstraints(
-        { video: { facingMode: "environment" } },
-        videoRef.current!,
-        (result, _err, ctrl) => {
-          // The callback fires on every scan attempt, success or not —
-          // "nothing decoded in this frame" is the overwhelmingly common
-          // case and isn't an error worth surfacing, only a real result is.
-          if (stopped || !result) return;
-          stopped = true;
-          ctrl.stop();
-          // TEMP DEBUG — remove once we've confirmed decode is/isn't the
-          // broken step on the reporter's device. Fires on the raw result
-          // straight from zxing, before any app logic (onChange/onSubmit/
-          // BarcodeInput) runs, to isolate "decode never fires" from "decode
-          // works but something downstream doesn't."
-          alert("SCAN OK, decoded: " + result.getText());
-          onScanRef.current(result.getText());
-        }
-      )
-      .then((c) => {
+
+    const scheduleNextFrame = (callback: () => void) => {
+      if (!videoElement) return;
+      if (typeof videoElement.requestVideoFrameCallback === "function") {
+        usingVideoFrameCallback = true;
+        frameHandle = videoElement.requestVideoFrameCallback(callback);
+      } else {
+        usingVideoFrameCallback = false;
+        frameHandle = requestAnimationFrame(callback);
+      }
+    };
+
+    const scanFrame = () => {
+      if (stopped || !videoElement) return;
+      try {
+        // decode() re-captures the CURRENT frame into a fresh canvas on
+        // every call — it throws (NotFoundException, the overwhelmingly
+        // common case) rather than returning when nothing decodes.
+        const result = reader.decode(videoElement);
+        if (stopped) return;
+        stopped = true;
+        // TEMP DEBUG — remove once confirmed fixed on the reporter's
+        // iPhone. Fires on the raw decode result before any app logic
+        // (onChange/onSubmit/BarcodeInput) runs.
+        alert("SCAN OK, decoded: " + result.getText());
+        onScanRef.current(result.getText());
+        return; // got a result — don't schedule another frame
+      } catch {
+        // No code found in this frame — expected on nearly every call.
+      }
+      scheduleNextFrame(scanFrame);
+    };
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" } })
+      .then((mediaStream) => {
         if (stopped) {
-          // Cleanup already ran before this settled (e.g. the modal was
-          // closed mid-permission-prompt) — stop the stream we just
-          // opened instead of leaking an active camera.
-          c.stop();
+          mediaStream.getTracks().forEach((track) => track.stop());
           return;
         }
-        controls = c;
+        stream = mediaStream;
+        if (!videoElement) return;
+        videoElement.srcObject = mediaStream;
+        return videoElement.play().then(() => scheduleNextFrame(scanFrame));
       })
       .catch(handleStartError);
 
     return () => {
       stopped = true;
-      controls?.stop();
+      if (frameHandle !== null) {
+        if (usingVideoFrameCallback) {
+          videoElement?.cancelVideoFrameCallback(frameHandle);
+        } else {
+          cancelAnimationFrame(frameHandle);
+        }
+      }
+      stream?.getTracks().forEach((track) => track.stop());
     };
   }, []); // mount once, stop only on unmount — see onScanRef above
 
@@ -105,6 +143,8 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         )}
         <video
           ref={videoRef}
+          playsInline
+          muted
           className="w-full rounded-lg object-cover"
           style={{ display: errorMessage ? "none" : undefined }}
         />
