@@ -7,6 +7,15 @@ interface CameraScannerProps {
   onClose: () => void;
 }
 
+// Fraction of the video's shorter native dimension used as the scan
+// target — both what's visually outlined for the user to aim at, and
+// the only region actually decoded each frame. Decoding the full frame
+// (the previous version) works but is slower per attempt and gives the
+// user nothing to aim at, which made scans take a lot of trial and
+// error to land. Cropping to a smaller, clearly-marked region is both
+// faster to decode and easier to aim.
+const SCAN_REGION_FRACTION = 0.7;
+
 // Modal camera scanner for both QR and 1D barcodes, per fe-standard.md
 // §5. This is always an alternative input path alongside the plain text
 // field in BarcodeInput — never the only way to enter a code.
@@ -27,6 +36,17 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<{ message: string } | "generic" | null>(null);
+  // Overlay box position as a % of the displayed video, matching the
+  // actual crop region decoded each frame. Computed once real video
+  // dimensions are known — a plain 70%-of-both-axes box would be wrong
+  // for non-square video, since the crop itself is a square based on the
+  // shorter native dimension (see computeCropRect below).
+  const [overlayRect, setOverlayRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   // See below for why onScan is read via a ref rather than as an effect
   // dependency: it's a new function reference on every parent render, and
@@ -56,6 +76,42 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     };
 
     const reader = new BrowserMultiFormatReader();
+    // Reused across every frame rather than recreated — a fresh canvas
+    // per attempt (what reader.decode(videoElement) does internally at
+    // full frame size) is unnecessary allocation churn at scan rate.
+    const cropCanvas = document.createElement("canvas");
+    const cropContext = cropCanvas.getContext("2d", { willReadFrequently: true });
+
+    // Video's native pixel dimensions are stable for the whole stream
+    // (unlike element.clientWidth, which can change with layout), so the
+    // crop rectangle only needs computing once, not per frame.
+    let cropRect: { sx: number; sy: number; size: number } | null = null;
+    const computeCropRect = () => {
+      if (!videoElement || !videoElement.videoWidth || !videoElement.videoHeight) return;
+      const size = Math.floor(
+        Math.min(videoElement.videoWidth, videoElement.videoHeight) * SCAN_REGION_FRACTION
+      );
+      cropRect = {
+        sx: Math.floor((videoElement.videoWidth - size) / 2),
+        sy: Math.floor((videoElement.videoHeight - size) / 2),
+        size,
+      };
+      cropCanvas.width = size;
+      cropCanvas.height = size;
+      // width/height are computed against their own axis (videoWidth vs
+      // videoHeight) rather than reusing one — a pixel-square region
+      // converts to DIFFERENT %-of-width vs %-of-height on a non-square
+      // video, and this is what makes the two come back out as an actual
+      // square once rendered against the video's real display box (whose
+      // width and height are themselves in the same videoWidth:videoHeight
+      // ratio, since there's no object-fit: cover involved).
+      setOverlayRect({
+        left: (cropRect.sx / videoElement.videoWidth) * 100,
+        top: (cropRect.sy / videoElement.videoHeight) * 100,
+        width: (size / videoElement.videoWidth) * 100,
+        height: (size / videoElement.videoHeight) * 100,
+      });
+    };
 
     const scheduleNextFrame = (callback: () => void) => {
       if (!videoElement) return;
@@ -69,22 +125,32 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     };
 
     const scanFrame = () => {
-      if (stopped || !videoElement) return;
-      try {
-        // decode() re-captures the CURRENT frame into a fresh canvas on
-        // every call — it throws (NotFoundException, the overwhelmingly
-        // common case) rather than returning when nothing decodes.
-        const result = reader.decode(videoElement);
-        if (stopped) return;
-        stopped = true;
-        // TEMP DEBUG — remove once confirmed fixed on the reporter's
-        // iPhone. Fires on the raw decode result before any app logic
-        // (onChange/onSubmit/BarcodeInput) runs.
-        alert("SCAN OK, decoded: " + result.getText());
-        onScanRef.current(result.getText());
-        return; // got a result — don't schedule another frame
-      } catch {
-        // No code found in this frame — expected on nearly every call.
+      if (stopped || !videoElement || !cropContext) return;
+      if (!cropRect) computeCropRect();
+      if (cropRect) {
+        cropContext.drawImage(
+          videoElement,
+          cropRect.sx,
+          cropRect.sy,
+          cropRect.size,
+          cropRect.size,
+          0,
+          0,
+          cropRect.size,
+          cropRect.size
+        );
+        try {
+          // decodeFromCanvas throws (NotFoundException, the overwhelmingly
+          // common case) rather than returning when nothing decodes.
+          const result = reader.decodeFromCanvas(cropCanvas);
+          if (!stopped) {
+            stopped = true;
+            onScanRef.current(result.getText());
+          }
+          return; // got a result — don't schedule another frame
+        } catch {
+          // No code found in this frame — expected on nearly every call.
+        }
       }
       scheduleNextFrame(scanFrame);
     };
@@ -141,13 +207,29 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
             {errorMessage}
           </p>
         )}
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          className="w-full rounded-lg object-cover"
-          style={{ display: errorMessage ? "none" : undefined }}
-        />
+        {/* No object-fit: cover — natural aspect ratio keeps what's on
+            screen matching the video's native pixels 1:1, so the overlay
+            box below lines up with the actual region being decoded. */}
+        <div className="relative">
+          <video
+            ref={videoRef}
+            playsInline
+            muted
+            className="w-full rounded-lg"
+            style={{ display: errorMessage ? "none" : undefined }}
+          />
+          {!errorMessage && overlayRect && (
+            <div
+              className="pointer-events-none absolute rounded-lg border-2 border-emerald-400"
+              style={{
+                left: `${overlayRect.left}%`,
+                top: `${overlayRect.top}%`,
+                width: `${overlayRect.width}%`,
+                height: `${overlayRect.height}%`,
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
