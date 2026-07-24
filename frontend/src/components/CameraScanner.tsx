@@ -75,16 +75,43 @@ const NATIVE_DETECTOR_FORMATS = [
 // decoding, which uses a different computer-vision approach (peak/valley
 // signal analysis) than zxing's, so it can succeed on some frames zxing
 // and jsQR both miss (and vice versa).
+//
+// Deliberately narrower than Quagga's full reader list: code_39,
+// codabar, and i2of5 (interleaved 2-of-5) have no built-in check digit
+// and essentially never appear on grocery retail packaging (they're
+// industrial/logistics formats — shipping cartons, medical, etc). With
+// five decoders racing, enabling readers with no self-validation and no
+// real-world relevance here was the biggest source of confidently-wrong
+// "successful" decodes — dropped in favor of the GTIN check-digit
+// validation below, which is what actually make misreads (from any of
+// the five) get rejected instead of accepted.
 const QUAGGA_READERS: QuaggaJSCodeReader[] = [
   "code_128_reader",
   "ean_reader",
   "ean_8_reader",
   "upc_reader",
   "upc_e_reader",
-  "code_39_reader",
-  "codabar_reader",
-  "i2of5_reader",
 ];
+
+// EAN-8/UPC-A/EAN-13/GTIN-14 all share the same GS1 check-digit
+// algorithm regardless of which decoder read them: alternating weights
+// of 3 and 1 starting from the digit immediately left of the check
+// digit. Applied as a universal safety net in `succeed()` below — a
+// non-numeric result (QR payload, Code128 text, etc.) skips this check
+// entirely and is accepted as-is, since only these specific numeric
+// GTIN lengths have a checksum to verify.
+function isValidGtinCheckDigit(text: string): boolean {
+  if (!/^\d{8}$|^\d{12,14}$/.test(text)) return true; // not a checksummed GTIN length — nothing to validate
+  const digits = text.split("").map(Number);
+  const checkDigit = digits.pop()!;
+  let sum = 0;
+  let weight = 3;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    sum += digits[i] * weight;
+    weight = weight === 3 ? 1 : 3;
+  }
+  return (10 - (sum % 10)) % 10 === checkDigit;
+}
 
 // Fraction of the video's shorter native dimension used as the scan
 // target — both what's visually outlined for the user to aim at, and
@@ -168,6 +195,10 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
 
     const succeed = (text: string) => {
       if (stopped) return;
+      // A misread from any of the five decoders is far more likely to
+      // fail this check than a genuine barcode is — reject and keep
+      // scanning instead of handing a garbled value to the caller.
+      if (!isValidGtinCheckDigit(text)) return;
       stopped = true;
       onScanRef.current(text);
     };
