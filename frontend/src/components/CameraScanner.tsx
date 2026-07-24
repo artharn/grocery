@@ -1,6 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import jsQR from "jsqr";
+import Quagga, { type QuaggaJSCodeReader } from "@ericblade/quagga2";
+import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
+import zxingReaderWasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { useTranslation } from "react-i18next";
+
+// Self-host the zxing-wasm binary (same-origin, bundled by Vite via the
+// `?url` import above) instead of its default behavior of fetching from
+// the jsDelivr CDN at runtime — a POS scanner shouldn't depend on a
+// third-party CDN being reachable just to decode a barcode. Configured
+// once at module scope: this file is lazy-loaded (see BarcodeInput.tsx),
+// so it only runs the first time a user actually opens the scanner, and
+// calling it more than once with the same overrides object is a no-op
+// per zxing-wasm's own equality check.
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string) => (path.endsWith(".wasm") ? zxingReaderWasmUrl : path),
+  },
+});
 
 interface CameraScannerProps {
   onScan: (decodedText: string) => void;
@@ -51,6 +69,21 @@ const NATIVE_DETECTOR_FORMATS = [
   "pdf_417",
   "upc_a",
   "upc_e",
+];
+
+// quagga2 has no QR support — it's raced here purely for its 1D-barcode
+// decoding, which uses a different computer-vision approach (peak/valley
+// signal analysis) than zxing's, so it can succeed on some frames zxing
+// and jsQR both miss (and vice versa).
+const QUAGGA_READERS: QuaggaJSCodeReader[] = [
+  "code_128_reader",
+  "ean_reader",
+  "ean_8_reader",
+  "upc_reader",
+  "upc_e_reader",
+  "code_39_reader",
+  "codabar_reader",
+  "i2of5_reader",
 ];
 
 // Fraction of the video's shorter native dimension used as the scan
@@ -125,10 +158,13 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
     const nativeDetector = window.BarcodeDetector
       ? new window.BarcodeDetector({ formats: NATIVE_DETECTOR_FORMATS })
       : null;
-    // Only one in-flight detect() call at a time — if a frame's detect()
-    // hasn't resolved by the next requestVideoFrameCallback tick, skip
-    // starting another rather than piling up overlapping calls.
+    // Only one in-flight detect() call at a time per async decoder — if a
+    // frame's attempt hasn't resolved by the next
+    // requestVideoFrameCallback tick, skip starting another rather than
+    // piling up overlapping calls.
     let nativeDetectInFlight = false;
+    let zxingWasmDetectInFlight = false;
+    let quaggaDetectInFlight = false;
 
     const succeed = (text: string) => {
       if (stopped) return;
@@ -200,14 +236,42 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
           cropRect.size
         );
 
-        // Native detector races alongside zxing below rather than being
-        // tried first-then-fallback: it's async (a snapshot + one browser
-        // round-trip) where zxing is synchronous, so waiting on it before
-        // trying zxing would slow down the common case where zxing alone
-        // is plenty. `succeed()` is idempotent via the `stopped` guard, so
-        // whichever resolves first simply wins and the other's eventual
-        // result (if any) is silently discarded.
-        if (nativeDetector && !nativeDetectInFlight) {
+        // Five decoders race on the same cropped frame — different engines
+        // succeed/fail on different frames (skew, contrast, format), so
+        // whichever resolves first wins via the idempotent `succeed()`
+        // guard and the rest are simply discarded. Ordered cheapest/
+        // synchronous first so a frame that's already solved skips
+        // kicking off the heavier async attempts below it.
+
+        // jsQR — different QR-only decode algorithm than zxing's own.
+        // Shares the ImageData read with zxing-wasm below (getImageData is
+        // the one non-trivial cost here; no reason to pay it twice).
+        const imageData = cropContext.getImageData(0, 0, cropRect.size, cropRect.size);
+        try {
+          const qrResult = jsQR(imageData.data, imageData.width, imageData.height);
+          if (qrResult) succeed(qrResult.data);
+        } catch {
+          // Malformed frame data — the other four decoders still get
+          // their own attempt on this frame.
+        }
+
+        // zxing (JS port) — existing, synchronous.
+        if (!stopped) {
+          try {
+            // decodeFromCanvas throws (NotFoundException, the
+            // overwhelmingly common case) rather than returning when
+            // nothing decodes.
+            const result = reader.decodeFromCanvas(cropCanvas);
+            succeed(result.getText());
+          } catch {
+            // No code found in this frame — expected on nearly every call.
+          }
+        }
+
+        // Native BarcodeDetector — async (a snapshot + one browser
+        // round-trip), so it's kicked off rather than awaited before the
+        // synchronous decoders above; whichever finishes first wins.
+        if (!stopped && nativeDetector && !nativeDetectInFlight) {
           nativeDetectInFlight = true;
           createImageBitmap(cropCanvas)
             .then((bitmap) => nativeDetector.detect(bitmap))
@@ -215,23 +279,56 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
               if (barcodes.length > 0) succeed(barcodes[0].rawValue);
             })
             .catch(() => {
-              // Detection failure (e.g. unsupported format) — zxing still
-              // gets its own attempt below on the same frame.
+              // Detection failure (e.g. unsupported format) — the other
+              // decoders still get their own attempt on this frame.
             })
             .finally(() => {
               nativeDetectInFlight = false;
             });
         }
 
-        try {
-          // decodeFromCanvas throws (NotFoundException, the overwhelmingly
-          // common case) rather than returning when nothing decodes.
-          const result = reader.decodeFromCanvas(cropCanvas);
-          succeed(result.getText());
-          if (stopped) return; // got a result — don't schedule another frame
-        } catch {
-          // No code found in this frame — expected on nearly every call.
+        // zxing-wasm — the actual ZXing C++ engine via WebAssembly,
+        // unrelated codebase to the zxing-js port above despite the
+        // shared name; generally the most accurate of the five.
+        if (!stopped && !zxingWasmDetectInFlight) {
+          zxingWasmDetectInFlight = true;
+          readBarcodes(imageData, {
+            formats: ["AllReadable"],
+            maxNumberOfSymbols: 1,
+            tryHarder: true,
+          })
+            .then((results) => {
+              if (results[0]) succeed(results[0].text);
+            })
+            .catch(() => {})
+            .finally(() => {
+              zxingWasmDetectInFlight = false;
+            });
         }
+
+        // quagga2 — 1D-barcode specialist, different computer-vision
+        // approach again. Heaviest of the five (own image-processing
+        // pipeline + a canvas->dataURL encode), so it's tried last and
+        // only when nothing else already found a result this frame.
+        if (!stopped && !quaggaDetectInFlight) {
+          quaggaDetectInFlight = true;
+          Quagga.decodeSingle({
+            src: cropCanvas.toDataURL(),
+            numOfWorkers: 0,
+            locate: true,
+            inputStream: { size: cropRect.size },
+            decoder: { readers: QUAGGA_READERS },
+          })
+            .then((result) => {
+              if (result?.codeResult?.code) succeed(result.codeResult.code);
+            })
+            .catch(() => {})
+            .finally(() => {
+              quaggaDetectInFlight = false;
+            });
+        }
+
+        if (stopped) return; // a decoder already found a result this frame
       }
       if (!stopped) scheduleNextFrame(scanFrame);
     };

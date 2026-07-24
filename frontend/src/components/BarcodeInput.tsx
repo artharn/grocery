@@ -1,6 +1,11 @@
-import { useState, forwardRef } from "react";
+import { useState, forwardRef, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
-import CameraScanner from "./CameraScanner";
+
+// Lazy-loaded: CameraScanner pulls in five separate barcode/QR decoding
+// libraries (a couple of megabytes combined, including a WASM binary),
+// so it shouldn't be part of every page's initial bundle — only fetched
+// the first time a user actually taps the camera button.
+const CameraScanner = lazy(() => import("./CameraScanner"));
 
 interface BarcodeInputProps {
   value: string;
@@ -66,14 +71,22 @@ const BarcodeInput = forwardRef<HTMLInputElement, BarcodeInputProps>(
         </button>
 
         {scannerOpen && (
-          <CameraScanner
-            onScan={(text) => {
-              onChange(text);
-              setScannerOpen(false);
-              onSubmit?.(text);
-            }}
-            onClose={() => setScannerOpen(false)}
-          />
+          <Suspense
+            fallback={
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              </div>
+            }
+          >
+            <CameraScanner
+              onScan={(text) => {
+                onChange(text);
+                setScannerOpen(false);
+                onSubmit?.(text);
+              }}
+              onClose={() => setScannerOpen(false)}
+            />
+          </Suspense>
         )}
       </div>
     );

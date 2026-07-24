@@ -6,16 +6,10 @@ document; if it can't comply, fix the rule in the same change instead of
 quietly deviating.
 
 Stack: React 19 + TypeScript, Vite, Tailwind CSS v4, React Router,
-TanStack Query, `@zxing/browser`'s decode primitives for camera-based
-scanning (works on both QR and 1D barcodes), driven by a custom
-`requestVideoFrameCallback` loop in `CameraScanner.tsx` rather than the
-library's own built-in `decodeFromConstraints` scan loop or
-`html5-qrcode` — both of the latter schedule decode attempts on a plain
-timer and capture frames via `canvas.drawImage(video)`, which is a
-pattern iOS Safari is known to sometimes hand a stale/frozen frame under
-(the stream visibly plays, decode never fires). `requestVideoFrameCallback`
-fires only when a genuinely new frame is composited, sidestepping that.
-Deploys to Vercel as a static SPA.
+TanStack Query. Camera-based barcode/QR scanning is driven by a custom
+`requestVideoFrameCallback` loop in `CameraScanner.tsx` (see §5) rather
+than any library's own built-in scan loop, racing five separate decode
+engines per frame. Deploys to Vercel as a static SPA.
 
 ---
 
@@ -139,13 +133,83 @@ component (`components/BarcodeInput.tsx`):
 1. **Plain text field, auto-focused.** Hardware barcode scanners (HID/
    keyboard-wedge devices) work with zero extra code — they just emit
    fast keystrokes + Enter into whatever's focused.
-2. **"Scan with camera" button** opens `CameraScanner.tsx`, a modal using
-   `@zxing/browser` against the device camera (works on both QR and 1D
-   barcodes), and fills the same field on a successful decode.
+2. **"Scan with camera" button** opens `CameraScanner.tsx`, a modal
+   against the device camera, and fills the same field on a successful
+   decode.
 
 Never build a flow that requires the camera — it's always an alternative
 to typing/hardware-scanning into the same field, since not every device
 running this app has a usable camera or camera permission.
+
+### Camera scan pipeline (`CameraScanner.tsx`)
+
+Decode reliability on real devices (particularly iOS Safari) took
+several rounds to get right; the current design exists for specific,
+verified reasons — don't simplify it without re-checking the history
+below.
+
+- **Frame capture**: a manual `requestVideoFrameCallback` loop (falling
+  back to `requestAnimationFrame` where unsupported), not
+  `getUserMedia`-managed libraries' own built-in timer loops. Both
+  `html5-qrcode` and `@zxing/browser`'s `decodeFromConstraints` schedule
+  decode attempts on a plain `setTimeout` and capture frames via
+  `canvas.drawImage(video)` — confirmed on a real iPhone that this
+  pattern lets the video stream visibly keep playing while every
+  `drawImage()` capture silently returns a stale/frozen frame, so decode
+  never fires (Android Chrome is unaffected). `requestVideoFrameCallback`
+  fires only when a genuinely new frame is composited, sidestepping this.
+- **Scan region**: only a centered square crop (`SCAN_REGION_FRACTION`,
+  70% of the video's shorter native dimension) is decoded, matched by an
+  on-screen guide box computed from the same math. Decoding the full raw
+  frame works but is slower per attempt and gives the user nothing to aim
+  at.
+- **Best-effort continuous autofocus** (`focusMode: "continuous"` in
+  `getUserMedia`'s `advanced` constraints) plus an on-screen distance
+  hint — the constraint mainly helps Android (iOS Safari exposes no
+  camera focus control to web JS at all), so the hint is the one lever
+  that helps on every platform for the "held too close to focus" failure
+  mode.
+- **Five decode engines race on every frame**, ordered cheapest/
+  synchronous first so a frame already solved skips the heavier async
+  attempts below it:
+  1. `jsQR` — pure-JS, QR-only, different algorithm than zxing's own QR
+     decoder.
+  2. `@zxing/browser`'s `BrowserMultiFormatReader` (zxing-js port) —
+     synchronous, broad format support.
+  3. Native `BarcodeDetector` (feature-detected; mainly Chromium/Android,
+     not Safari) — hardware-accelerated where available. Not yet in TS's
+     bundled DOM types, so it's ambient-typed locally in
+     `CameraScanner.tsx`.
+  4. `zxing-wasm` — the actual ZXing C++ engine via WebAssembly; an
+     unrelated codebase to the zxing-js port above despite the shared
+     name, generally the most accurate of the five. Self-hosted (the
+     `.wasm` binary is bundled via a Vite `?url` import and served
+     same-origin via `prepareZXingModule`'s `locateFile` override)
+     rather than left on its default jsDelivr CDN fetch — a POS scanner
+     shouldn't depend on a third-party CDN being reachable to decode a
+     barcode.
+  5. `@ericblade/quagga2` — 1D-barcode specialist using a different
+     computer-vision approach again (peak/valley signal analysis); the
+     heaviest of the five (its own image-processing pipeline plus a
+     canvas→dataURL encode per attempt), so it only starts once nothing
+     cheaper already found a result this frame. Pulls in `sharp` as an
+     *optional* Node-only dependency for a file-loading code path this
+     app never uses — confirmed the bundled browser build
+     (`dist/quagga.min.js`, resolved via its `package.json` `browser`
+     field) contains zero references to `sharp`/`ndarray-pixels`, so
+     there's no runtime exposure in the shipped app. It still physically
+     installs (with a native postinstall script) in `node_modules` on
+     any machine that runs `npm install` here, which is a real if narrow
+     supply-chain surface worth knowing about — `npm audit` will flag it.
+  All five funnel into one idempotent `succeed(text)` call guarded by a
+  shared `stopped` flag, so only the first result wins regardless of
+  which decoder(s) eventually resolve.
+- **Code-split**: `CameraScanner` is `React.lazy()`-loaded from
+  `BarcodeInput.tsx`, not statically imported. Five decoding libraries
+  plus a ~1MB WASM binary is too much to add to every page's initial
+  bundle — it's only fetched the first time a user taps the camera
+  button. (This dropped the main bundle from ~850KB to ~370KB when
+  introduced.)
 
 ## 6. Mobile
 
